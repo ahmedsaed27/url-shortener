@@ -8,12 +8,14 @@ from statistics import mean
 BASE_URL = "http://localhost:8080"
 
 DURATION_SECONDS = 60
-CONCURRENCY = 50
+CONCURRENCY = 200
 READ_RATIO = 0.9
+REQUEST_TIMEOUT_SECONDS = 10
 
 created_codes = []
 latencies_ms = []
 status_counts = {}
+error_counts = {}
 errors = 0
 
 
@@ -26,49 +28,58 @@ def record_status(status: int):
     status_counts[status] = status_counts.get(status, 0) + 1
 
 
-async def create_url(session: aiohttp.ClientSession):
+def record_error(exc: Exception):
     global errors
 
+    errors += 1
+    name = type(exc).__name__
+    error_counts[name] = error_counts.get(name, 0) + 1
+
+
+async def create_url(session: aiohttp.ClientSession):
     start = time.perf_counter()
+
     try:
         async with session.post(
             f"{BASE_URL}/api/urls",
             json={"url": random_url()},
-            timeout=10,
         ) as resp:
             record_status(resp.status)
-            data = await resp.json()
 
-            if resp.status == 201 and "code" in data:
-                created_codes.append(data["code"])
+            if resp.status == 201:
+                try:
+                    data = await resp.json()
+                    if "code" in data:
+                        created_codes.append(data["code"])
+                except Exception as exc:
+                    record_error(exc)
+            else:
+                await resp.read()
 
-    except Exception:
-        errors += 1
+    except Exception as exc:
+        record_error(exc)
     finally:
         latencies_ms.append((time.perf_counter() - start) * 1000)
 
 
 async def redirect_url(session: aiohttp.ClientSession):
-    global errors
-
     if not created_codes:
         await create_url(session)
         return
 
     code = random.choice(created_codes)
-
     start = time.perf_counter()
+
     try:
         async with session.get(
             f"{BASE_URL}/{code}",
             allow_redirects=False,
-            timeout=10,
         ) as resp:
             record_status(resp.status)
             await resp.read()
 
-    except Exception:
-        errors += 1
+    except Exception as exc:
+        record_error(exc)
     finally:
         latencies_ms.append((time.perf_counter() - start) * 1000)
 
@@ -93,7 +104,14 @@ def percentile(values, p):
 async def main():
     print("Warming up with 20 URLs...")
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
+    connector = aiohttp.TCPConnector(
+        limit=CONCURRENCY * 2,
+        limit_per_host=CONCURRENCY * 2,
+        ttl_dns_cache=300,
+    )
+
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         for _ in range(20):
             await create_url(session)
 
@@ -120,6 +138,7 @@ async def main():
         print(f"Requests/sec: {total_requests / total_time:.2f}")
         print(f"Created codes: {len(created_codes)}")
         print(f"Errors: {errors}")
+        print(f"Error counts: {error_counts}")
         print(f"Status counts: {status_counts}")
 
         if latencies_ms:
