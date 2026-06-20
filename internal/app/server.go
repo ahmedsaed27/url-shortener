@@ -9,11 +9,15 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/as9840935/url-shortener/internal/metrics"
 )
 
 func Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	metrics.Register()
 
 	app, err := New(ctx)
 	if err != nil {

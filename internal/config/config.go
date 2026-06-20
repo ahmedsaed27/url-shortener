@@ -13,6 +13,7 @@ import (
 type Config struct {
 	AppEnv                   string `validate:"required"`
 	HTTPPort                 int    `validate:"required,min=1"`
+	WorkerMetricsPort        int    `validate:"required,min=1"`
 	AppBaseURL               string `validate:"required,url"`
 	ShortCodeLength          int    `validate:"required,min=4,max=20"`
 	DatabaseURL              string `validate:"required"`
@@ -34,6 +35,11 @@ func Load() (Config, error) {
 	}
 
 	httpPort, err := getEnvAsInt("HTTP_PORT", 8080)
+	if err != nil {
+		return Config{}, err
+	}
+
+	workerMetricsPort, err := getEnvAsInt("WORKER_METRICS_PORT", 9091)
 	if err != nil {
 		return Config{}, err
 	}
@@ -71,6 +77,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:                   getEnv("APP_ENV", "local"),
 		HTTPPort:                 httpPort,
+		WorkerMetricsPort:        workerMetricsPort,
 		AppBaseURL:               getEnv("APP_BASE_URL", "http://localhost:8080"),
 		ShortCodeLength:          shortCodeLength,
 		DatabaseURL:              getEnv("DATABASE_URL", ""),

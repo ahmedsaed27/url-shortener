@@ -2,9 +2,10 @@ package app
 
 import (
 	"net/http"
-
+	"github.com/as9840935/url-shortener/internal/metrics"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func (app *Application) MountRoutes() http.Handler {
@@ -14,11 +15,17 @@ func (app *Application) MountRoutes() http.Handler {
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	router.Get("/health", app.Handlers.Health.Check)
-	router.Get("/{code}", app.Handlers.ShortURL.Redirect)
+	router.Handle("/metrics", promhttp.Handler())
 
-	router.Route("/api", func(r chi.Router) {
-		r.Post("/urls", app.Handlers.ShortURL.Create)
+	router.Group(func(r chi.Router) {
+		r.Use(metrics.HTTPMetricsMiddleware)
+
+		r.Get("/health", app.Handlers.Health.Check)
+		r.Get("/{code}", app.Handlers.ShortURL.Redirect)
+
+		r.Route("/api", func(r chi.Router) {
+			r.Post("/urls", app.Handlers.ShortURL.Create)
+		})
 	})
 
 	return router

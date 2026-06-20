@@ -9,6 +9,8 @@ import (
 	neturl "net/url"
 	"strings"
 	"time"
+
+	"github.com/as9840935/url-shortener/internal/metrics"
 )
 
 type RepositoryContract interface {
@@ -85,19 +87,31 @@ func (s *Service) Resolve(ctx context.Context, code string) (string, error) {
 	}
 
 	isNotFoundCached, err := s.cache.IsNotFoundCached(ctx, code)
-	if err == nil && isNotFoundCached {
+	if err != nil {
+		metrics.ShortURLCacheErrorsTotal.Inc()
+	} else if isNotFoundCached {
+		metrics.ShortURLNegativeCacheHitsTotal.Inc()
 		return "", ErrShortURLNotFound
 	}
 
 	originalURL, err := s.cache.GetOriginalURL(ctx, code)
 	if err == nil {
+		metrics.ShortURLCacheHitsTotal.Inc()
 		return originalURL, nil
 	}
+	if errors.Is(err, ErrCacheMiss) {
+		metrics.ShortURLCacheMissesTotal.Inc()
+	} else {
+		metrics.ShortURLCacheErrorsTotal.Inc()
+	}
 
+	metrics.ShortURLDBFallbackTotal.Inc()
 	shortURL, err := s.repo.FindByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, ErrShortURLNotFound) {
-			_ = s.cache.SetNotFound(ctx, code, s.negativeCacheTTL)
+			if err := s.cache.SetNotFound(ctx, code, s.negativeCacheTTL); err != nil {
+				metrics.ShortURLCacheErrorsTotal.Inc()
+			}
 		}
 
 		return "", err
@@ -111,7 +125,9 @@ func (s *Service) Resolve(ctx context.Context, code string) (string, error) {
 		return "", ErrShortURLExpired
 	}
 
-	_ = s.cache.SetOriginalURL(ctx, code, shortURL.OriginalURL, s.cacheTTL)
+	if err := s.cache.SetOriginalURL(ctx, code, shortURL.OriginalURL, s.cacheTTL); err != nil {
+		metrics.ShortURLCacheErrorsTotal.Inc()
+	}
 
 	return shortURL.OriginalURL, nil
 }
