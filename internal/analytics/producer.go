@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/as9840935/url-shortener/internal/metrics"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,7 +21,7 @@ func NewProducer(client *redis.Client, streamName string) *Producer {
 }
 
 func (p *Producer) TrackClick(ctx context.Context, event ClickEvent) error {
-	return p.client.XAdd(ctx, &redis.XAddArgs{
+	err := p.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: p.streamName,
 		Values: map[string]interface{}{
 			"code":       event.Code,
@@ -30,4 +31,11 @@ func (p *Producer) TrackClick(ctx context.Context, event ClickEvent) error {
 			"clicked_at": event.ClickedAt.Format(time.RFC3339Nano),
 		},
 	}).Err()
+	if err != nil {
+		metrics.AnalyticsProducerErrorsTotal.Inc()
+		return err
+	}
+
+	metrics.AnalyticsEventsProducedTotal.Inc()
+	return nil
 }

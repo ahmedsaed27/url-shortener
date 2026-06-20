@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/as9840935/url-shortener/internal/metrics"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -72,6 +73,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			for _, message := range stream.Messages {
 				event, err := clickEventFromMessage(message)
 				if err != nil {
+					metrics.AnalyticsWorkerDecodeErrorsTotal.Inc()
 					log.Printf("decode click event %s: %v", message.ID, err)
 					invalidMessageIDs = append(invalidMessageIDs, message.ID)
 					continue
@@ -84,6 +86,7 @@ func (w *Worker) Run(ctx context.Context) error {
 
 		if len(invalidMessageIDs) > 0 {
 			if err := w.client.XAck(ctx, w.streamName, w.groupName, invalidMessageIDs...).Err(); err != nil {
+				metrics.AnalyticsWorkerAckErrorsTotal.Inc()
 				log.Printf("acknowledge invalid click events: %v", err)
 			}
 		}
@@ -93,11 +96,15 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 
 		if err := w.repo.InsertClicks(ctx, events); err != nil {
+			metrics.AnalyticsWorkerInsertErrorsTotal.Inc()
 			log.Printf("insert %d click events: %v", len(events), err)
 			continue
 		}
+		metrics.AnalyticsWorkerEventsInsertedTotal.Add(float64(len(events)))
+		metrics.AnalyticsWorkerBatchesInsertedTotal.Inc()
 
 		if err := w.client.XAck(ctx, w.streamName, w.groupName, messageIDs...).Err(); err != nil {
+			metrics.AnalyticsWorkerAckErrorsTotal.Inc()
 			log.Printf("acknowledge %d click events: %v", len(messageIDs), err)
 		}
 	}

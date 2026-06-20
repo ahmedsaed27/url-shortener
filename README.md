@@ -103,6 +103,7 @@ CLICK_STREAM_GROUP=url_click_workers
 CLICK_STREAM_CONSUMER=worker-1
 CLICK_STREAM_BATCH_SIZE=50
 CLICK_STREAM_BLOCK_TIME=5s
+WORKER_METRICS_PORT=9091
 ```
 
 ## Start PostgreSQL and Redis
@@ -254,6 +255,28 @@ SELECT code, ip_address, user_agent, referer, clicked_at
 FROM url_clicks
 ORDER BY id DESC;
 ```
+
+## Observability
+
+The API exposes Prometheus metrics at <http://localhost:8080/metrics>. The analytics worker exposes its own process metrics at <http://localhost:9091/metrics>.
+
+To run Prometheus locally, start the included Compose service:
+
+```bash
+docker compose up -d
+```
+
+Prometheus is available at <http://localhost:9090> and scrapes the API and worker through `host.docker.internal`.
+
+During a load test, watch these metrics:
+
+- `http_requests_total`
+- `http_request_duration_seconds`
+- `shorturl_cache_hits_total`
+- `shorturl_cache_misses_total`
+- `analytics_events_produced_total`
+- `analytics_worker_events_inserted_total`
+- `analytics_worker_insert_errors_total`
 
 ## Why This Structure Works Well for Learning
 

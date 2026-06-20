@@ -19,6 +19,14 @@ services:
     volumes:
       - redis_data:/data
 
+  prometheus:
+    image: prom/prometheus
+    container_name: url-shortener-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
 volumes:
   postgres_data:
   redis_data:
