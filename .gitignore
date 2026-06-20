@@ -1,0 +1,25 @@
+# Env files
+.env
+.env.*
+!.env.example
+
+# Air / build output
+tmp/
+bin/
+*.exe
+
+# Logs
+*.log
+
+# Go test/build
+*.test
+coverage.out
+coverage.html
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
