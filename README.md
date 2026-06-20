@@ -106,16 +106,50 @@ CLICK_STREAM_BLOCK_TIME=5s
 WORKER_METRICS_PORT=9091
 ```
 
-## Start PostgreSQL and Redis
+## Start PostgreSQL and Redis for Local Go Development
 
 ```bash
-docker compose up -d
+docker compose up -d postgres redis
 ```
 
 This starts:
 
 - PostgreSQL on `localhost:5432`
 - Redis on `localhost:6379`
+
+## Docker Compose Full Stack
+
+Build and start PostgreSQL, Redis, two API instances, the analytics worker, Nginx, and Prometheus:
+
+```bash
+docker compose up -d --build
+```
+
+Run database migrations from the Compose migration service:
+
+```bash
+docker compose run --rm migrate
+```
+
+The migration service uses the `tools` profile, so it runs only when explicitly requested.
+
+Check service status:
+
+```bash
+docker compose ps
+```
+
+The API is available through Nginx at <http://localhost:8080/health>. Nginx uses round-robin load balancing between `api-1` and `api-2`.
+
+Prometheus is available at <http://localhost:9090>. It scrapes both API instances and the worker through the Docker network. Worker metrics are also mapped to <http://localhost:9091/metrics>.
+
+Run the included load test against Nginx:
+
+```bash
+py scripts/load_test.py
+```
+
+PostgreSQL, Redis, and the worker each remain a single instance. This setup tests horizontal scaling at the API layer only.
 
 ## Run Migrations
 
@@ -266,7 +300,7 @@ To run Prometheus locally, start the included Compose service:
 docker compose up -d
 ```
 
-Prometheus is available at <http://localhost:9090> and scrapes the API and worker through `host.docker.internal`.
+Prometheus is available at <http://localhost:9090> and scrapes `api-1:8080`, `api-2:8080`, and `worker:9091` through the Docker network.
 
 During a load test, watch these metrics:
 

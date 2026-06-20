@@ -1,11 +1,11 @@
 package app
 
 import (
-	"net/http"
 	"github.com/as9840935/url-shortener/internal/metrics"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
 )
 
 func (app *Application) MountRoutes() http.Handler {

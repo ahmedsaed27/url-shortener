@@ -6,7 +6,7 @@ endif
 APP_MAIN=./cmd/api
 MIGRATE_CMD=migrate -path migrations -database "$(DATABASE_URL)"
 
-.PHONY: run worker dev test tidy docker-up docker-down migrate-up migrate-down migrate-create
+.PHONY: run worker dev test tidy docker-build docker-up docker-down docker-logs docker-migrate migrate-up migrate-down migrate-create
 
 run:
 	go run $(APP_MAIN)
@@ -28,6 +28,15 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+docker-build:
+	docker compose build
+
+docker-logs:
+	docker compose logs -f
+
+docker-migrate:
+	docker compose --profile tools run --rm migrate
 
 migrate-up:
 	$(MIGRATE_CMD) up
