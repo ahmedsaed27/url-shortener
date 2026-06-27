@@ -28,6 +28,12 @@ type Config struct {
 	ClickStreamConsumer      string        `validate:"required"`
 	ClickStreamBatchSize     int           `validate:"min=1"`
 	ClickStreamBlockTime     time.Duration `validate:"gt=0"`
+	RateLimitEnabled         bool
+	RateLimitCreateLimit     int           `validate:"min=1"`
+	RateLimitCreateWindow    time.Duration `validate:"gte=1000000"`
+	RateLimitResolveLimit    int           `validate:"min=1"`
+	RateLimitResolveWindow   time.Duration `validate:"gte=1000000"`
+	RateLimitFailOpen        bool
 }
 
 func Load() (Config, error) {
@@ -75,6 +81,36 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	rateLimitEnabled, err := getEnvAsBool("RATE_LIMIT_ENABLED", true)
+	if err != nil {
+		return Config{}, err
+	}
+
+	rateLimitCreateLimit, err := getEnvAsInt("RATE_LIMIT_CREATE_LIMIT", 10)
+	if err != nil {
+		return Config{}, err
+	}
+
+	rateLimitCreateWindow, err := getEnvAsDuration("RATE_LIMIT_CREATE_WINDOW", time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+
+	rateLimitResolveLimit, err := getEnvAsInt("RATE_LIMIT_RESOLVE_LIMIT", 100)
+	if err != nil {
+		return Config{}, err
+	}
+
+	rateLimitResolveWindow, err := getEnvAsDuration("RATE_LIMIT_RESOLVE_WINDOW", time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+
+	rateLimitFailOpen, err := getEnvAsBool("RATE_LIMIT_FAIL_OPEN", true)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{
 		AppEnv:                   getEnv("APP_ENV", "local"),
 		HTTPPort:                 httpPort,
@@ -92,6 +128,12 @@ func Load() (Config, error) {
 		ClickStreamConsumer:      getEnv("CLICK_STREAM_CONSUMER", "worker-1"),
 		ClickStreamBatchSize:     clickStreamBatchSize,
 		ClickStreamBlockTime:     clickStreamBlockTime,
+		RateLimitEnabled:         rateLimitEnabled,
+		RateLimitCreateLimit:     rateLimitCreateLimit,
+		RateLimitCreateWindow:    rateLimitCreateWindow,
+		RateLimitResolveLimit:    rateLimitResolveLimit,
+		RateLimitResolveWindow:   rateLimitResolveWindow,
+		RateLimitFailOpen:        rateLimitFailOpen,
 	}
 
 	validate := validator.New()
@@ -134,6 +176,20 @@ func getEnvAsDuration(key string, fallback time.Duration) (time.Duration, error)
 	parsedValue, err := time.ParseDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
+	}
+
+	return parsedValue, nil
+}
+
+func getEnvAsBool(key string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+
+	parsedValue, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a valid boolean: %w", key, err)
 	}
 
 	return parsedValue, nil

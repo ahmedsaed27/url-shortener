@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -53,6 +52,21 @@ var (
 		Help: "Total number of analytics producer errors.",
 	})
 
+	RateLimitedRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rate_limited_requests_total",
+			Help: "Total number of requests rejected by the distributed rate limiter.",
+		},
+		[]string{"type"},
+	)
+	RateLimitErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rate_limit_errors_total",
+			Help: "Total number of distributed rate limiter errors.",
+		},
+		[]string{"type"},
+	)
+
 	AnalyticsWorkerEventsInsertedTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "analytics_worker_events_inserted_total",
 		Help: "Total number of analytics events inserted by the worker.",
@@ -90,6 +104,8 @@ func Register() {
 			ShortURLCacheErrorsTotal,
 			AnalyticsEventsProducedTotal,
 			AnalyticsProducerErrorsTotal,
+			RateLimitedRequestsTotal,
+			RateLimitErrorsTotal,
 			AnalyticsWorkerEventsInsertedTotal,
 			AnalyticsWorkerBatchesInsertedTotal,
 			AnalyticsWorkerInsertErrorsTotal,
