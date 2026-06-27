@@ -1,22 +1,27 @@
 import asyncio
-import aiohttp
+import os
 import random
 import string
 import time
 from statistics import mean
 
-BASE_URL = "http://localhost:8080"
+import aiohttp
 
-DURATION_SECONDS = 60
-CONCURRENCY = 200
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
+
+DURATION_SECONDS = int(os.getenv("DURATION_SECONDS", "60"))
+CONCURRENCY = int(os.getenv("CONCURRENCY", "200"))
 READ_RATIO = 0.9
 REQUEST_TIMEOUT_SECONDS = 10
+SCENARIO = os.getenv("SCENARIO", "mixed")
+BURST_REQUESTS = int(os.getenv("BURST_REQUESTS", "200"))
 
 created_codes = []
 latencies_ms = []
 status_counts = {}
 error_counts = {}
 errors = 0
+rate_limit_headers_seen = 0
 
 
 def random_url() -> str:
@@ -36,6 +41,17 @@ def record_error(exc: Exception):
     error_counts[name] = error_counts.get(name, 0) + 1
 
 
+def record_rate_limit_headers(resp: aiohttp.ClientResponse):
+    global rate_limit_headers_seen
+
+    if resp.status != 429:
+        return
+
+    required = ("X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After")
+    if all(resp.headers.get(header) for header in required):
+        rate_limit_headers_seen += 1
+
+
 async def create_url(session: aiohttp.ClientSession):
     start = time.perf_counter()
 
@@ -45,6 +61,7 @@ async def create_url(session: aiohttp.ClientSession):
             json={"url": random_url()},
         ) as resp:
             record_status(resp.status)
+            record_rate_limit_headers(resp)
 
             if resp.status == 201:
                 try:
@@ -76,6 +93,7 @@ async def redirect_url(session: aiohttp.ClientSession):
             allow_redirects=False,
         ) as resp:
             record_status(resp.status)
+            record_rate_limit_headers(resp)
             await resp.read()
 
     except Exception as exc:
@@ -92,6 +110,44 @@ async def worker(session: aiohttp.ClientSession, end_time: float):
             await create_url(session)
 
 
+async def run_scenario(session: aiohttp.ClientSession):
+    if SCENARIO == "create-limit":
+        await asyncio.gather(*(create_url(session) for _ in range(BURST_REQUESTS)))
+        return 0
+
+    if SCENARIO == "resolve-limit":
+        await create_url(session)
+        if not created_codes:
+            raise RuntimeError("could not create a URL for the resolve-limit scenario")
+        await asyncio.gather(*(redirect_url(session) for _ in range(BURST_REQUESTS)))
+        return 0
+
+    if SCENARIO == "normal":
+        await create_url(session)
+        for _ in range(5):
+            await redirect_url(session)
+        return 0
+
+    if SCENARIO != "mixed":
+        raise ValueError(
+            "SCENARIO must be mixed, normal, create-limit, or resolve-limit"
+        )
+
+    print("Warming up with 20 URLs...")
+    for _ in range(20):
+        await create_url(session)
+    print(f"Created warmup codes: {len(created_codes)}")
+
+    start_time = time.time()
+    end_time = start_time + DURATION_SECONDS
+    tasks = [
+        asyncio.create_task(worker(session, end_time))
+        for _ in range(CONCURRENCY)
+    ]
+    await asyncio.gather(*tasks)
+    return time.time() - start_time
+
+
 def percentile(values, p):
     if not values:
         return 0
@@ -102,8 +158,6 @@ def percentile(values, p):
 
 
 async def main():
-    print("Warming up with 20 URLs...")
-
     timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT_SECONDS)
     connector = aiohttp.TCPConnector(
         limit=CONCURRENCY * 2,
@@ -112,23 +166,10 @@ async def main():
     )
 
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-        for _ in range(20):
-            await create_url(session)
-
-        print(f"Created warmup codes: {len(created_codes)}")
-        print("Starting load test...")
-
+        print(f"Starting {SCENARIO} scenario...")
         start_time = time.time()
-        end_time = start_time + DURATION_SECONDS
-
-        tasks = [
-            asyncio.create_task(worker(session, end_time))
-            for _ in range(CONCURRENCY)
-        ]
-
-        await asyncio.gather(*tasks)
-
-        total_time = time.time() - start_time
+        measured_time = await run_scenario(session)
+        total_time = measured_time or (time.time() - start_time)
         total_requests = sum(status_counts.values()) + errors
 
         print("\n===== Load Test Results =====")
@@ -140,6 +181,7 @@ async def main():
         print(f"Errors: {errors}")
         print(f"Error counts: {error_counts}")
         print(f"Status counts: {status_counts}")
+        print(f"429 responses with expected headers: {rate_limit_headers_seen}")
 
         if latencies_ms:
             print(f"Avg latency: {mean(latencies_ms):.2f} ms")

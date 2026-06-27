@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
 	"github.com/as9840935/url-shortener/internal/analytics"
 	"github.com/as9840935/url-shortener/internal/cache"
 	"github.com/as9840935/url-shortener/internal/config"

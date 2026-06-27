@@ -1,6 +1,7 @@
 package app
 
 import (
+	httpmiddleware "github.com/as9840935/url-shortener/internal/http/middleware"
 	"github.com/as9840935/url-shortener/internal/metrics"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,10 +22,21 @@ func (app *Application) MountRoutes() http.Handler {
 		r.Use(metrics.HTTPMetricsMiddleware)
 
 		r.Get("/health", app.Handlers.Health.Check)
-		r.Get("/{code}", app.Handlers.ShortURL.Redirect)
+
+		r.With(httpmiddleware.RateLimit(app.RateLimiter, httpmiddleware.RateLimitConfig{
+			Type:     "resolve",
+			Limit:    app.Config.RateLimitResolveLimit,
+			Window:   app.Config.RateLimitResolveWindow,
+			FailOpen: app.Config.RateLimitFailOpen,
+		})).Get("/{code}", app.Handlers.ShortURL.Redirect)
 
 		r.Route("/api", func(r chi.Router) {
-			r.Post("/urls", app.Handlers.ShortURL.Create)
+			r.With(httpmiddleware.RateLimit(app.RateLimiter, httpmiddleware.RateLimitConfig{
+				Type:     "create",
+				Limit:    app.Config.RateLimitCreateLimit,
+				Window:   app.Config.RateLimitCreateWindow,
+				FailOpen: app.Config.RateLimitFailOpen,
+			})).Post("/urls", app.Handlers.ShortURL.Create)
 		})
 	})
 

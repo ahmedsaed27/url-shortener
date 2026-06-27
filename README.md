@@ -104,6 +104,12 @@ CLICK_STREAM_CONSUMER=worker-1
 CLICK_STREAM_BATCH_SIZE=50
 CLICK_STREAM_BLOCK_TIME=5s
 WORKER_METRICS_PORT=9091
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_CREATE_LIMIT=10
+RATE_LIMIT_CREATE_WINDOW=1m
+RATE_LIMIT_RESOLVE_LIMIT=100
+RATE_LIMIT_RESOLVE_WINDOW=1m
+RATE_LIMIT_FAIL_OPEN=true
 ```
 
 ## Start PostgreSQL and Redis for Local Go Development
@@ -261,6 +267,39 @@ Error responses:
 - `404` if the code does not exist
 - `410` if the code is inactive or expired
 
+## Distributed Rate Limiting
+
+The API uses an atomic Redis Lua token bucket keyed by normalized client IP. Because both API instances use the same Redis database, limits apply across the full deployment rather than per process.
+
+- `POST /api/urls` uses `RATE_LIMIT_CREATE_LIMIT` and `RATE_LIMIT_CREATE_WINDOW`.
+- `GET /{code}` uses `RATE_LIMIT_RESOLVE_LIMIT` and `RATE_LIMIT_RESOLVE_WINDOW`.
+- `RATE_LIMIT_ENABLED` enables or disables both limiters.
+- `RATE_LIMIT_FAIL_OPEN=true` allows requests when the Redis rate-limit operation fails. `false` returns HTTP `503`.
+
+Defaults allow 10 creates and 100 resolves per minute. A rejected request returns:
+
+```http
+HTTP/1.1 429 Too Many Requests
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 0
+Retry-After: 6
+Content-Type: application/json
+
+{"error":"rate limit exceeded"}
+```
+
+Successful limited requests also include `X-RateLimit-Limit` and `X-RateLimit-Remaining`. Nginx overwrites `X-Forwarded-For` and `X-Real-IP` with the direct client address so callers cannot supply an arbitrary rate-limit key.
+
+The load-test script supports focused scenarios:
+
+```powershell
+$env:SCENARIO="normal"; py scripts/load_test.py
+$env:SCENARIO="create-limit"; $env:BURST_REQUESTS="50"; py scripts/load_test.py
+$env:SCENARIO="resolve-limit"; $env:BURST_REQUESTS="200"; py scripts/load_test.py
+```
+
+The two limit scenarios should report `429` responses and confirm the expected rate-limit headers. To exercise failure behavior, stop Redis after the API has started and send a request: fail-open continues to the handler, while fail-closed returns `503`.
+
 ## Redis Redirect Cache
 
 Short URL redirects use Redis as a small cache in front of PostgreSQL:
@@ -311,6 +350,8 @@ During a load test, watch these metrics:
 - `analytics_events_produced_total`
 - `analytics_worker_events_inserted_total`
 - `analytics_worker_insert_errors_total`
+- `rate_limited_requests_total{type="create|resolve"}`
+- `rate_limit_errors_total{type="create|resolve"}`
 
 ## Why This Structure Works Well for Learning
 

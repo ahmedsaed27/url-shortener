@@ -8,6 +8,7 @@ import (
 	"github.com/as9840935/url-shortener/internal/cache"
 	"github.com/as9840935/url-shortener/internal/config"
 	"github.com/as9840935/url-shortener/internal/database"
+	"github.com/as9840935/url-shortener/internal/ratelimit"
 	"github.com/as9840935/url-shortener/internal/store"
 	"github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,7 @@ type Application struct {
 	Redis             *redis.Client
 	Store             store.Storage
 	AnalyticsProducer *analytics.Producer
+	RateLimiter       ratelimit.Limiter
 	Handlers          Handlers
 	Validate          *validator.Validate
 }
@@ -47,6 +49,7 @@ func New(ctx context.Context) (*Application, error) {
 		Redis:             redisClient,
 		Store:             store.NewStorage(dbPool),
 		AnalyticsProducer: analytics.NewProducer(redisClient, cfg.ClickStreamName),
+		RateLimiter:       ratelimit.NewRedisLimiter(redisClient),
 		Validate:          validator.New(validator.WithRequiredStructEnabled()),
 	}
 
