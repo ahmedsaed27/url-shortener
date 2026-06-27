@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/ahmedsaed27/url-shortener/compare/v1.1.0...v1.2.0) (2026-06-27)
+
+
+### Features
+
+* Add Ratelimiter ([3ef0625](https://github.com/ahmedsaed27/url-shortener/commit/3ef0625d2df7d4d1bcef196428685c1a06d70980))
+* Add Ratelimiter ([3f067b4](https://github.com/ahmedsaed27/url-shortener/commit/3f067b4ab3678e7b1647fccb220a9407337322e9))
+
 ## [1.1.0](https://github.com/ahmedsaed27/url-shortener/compare/v1.0.0...v1.1.0) (2026-06-20)
 
 
